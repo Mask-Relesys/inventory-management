@@ -8,6 +8,35 @@
     <div v-if="loading" class="loading">{{ t('common.loading') }}</div>
     <div v-else-if="error" class="error">{{ error }}</div>
     <div v-else>
+      <!-- Restocking orders section: only rendered when there are submitted restocking orders -->
+      <div v-if="restockingOrders.length > 0" class="card restocking-section">
+        <div class="card-header">
+          <h3 class="card-title">Submitted Restocking Orders</h3>
+        </div>
+        <div class="table-container">
+          <table class="restocking-table">
+            <thead>
+              <tr>
+                <th class="rcol-order-number">Order #</th>
+                <th class="rcol-items">Items</th>
+                <th class="rcol-date">Order Date</th>
+                <th class="rcol-date">Est. Delivery</th>
+                <th class="rcol-value">Total Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="order in restockingOrders" :key="order.order_number">
+                <td class="rcol-order-number"><strong>{{ order.order_number }}</strong></td>
+                <td class="rcol-items">{{ order.items.length }} items</td>
+                <td class="rcol-date">{{ formatDate(order.order_date) }}</td>
+                <td class="rcol-date">{{ formatDate(order.expected_delivery) }}</td>
+                <td class="rcol-value"><strong>{{ currencySymbol }}{{ order.total_value.toLocaleString() }}</strong></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <div class="stats-grid">
         <div class="stat-card success">
           <div class="stat-label">{{ t('status.delivered') }}</div>
@@ -95,6 +124,7 @@ export default {
     const loading = ref(true)
     const error = ref(null)
     const orders = ref([])
+    const restockingOrders = ref([])
 
     // Use shared filters
     const {
@@ -121,6 +151,15 @@ export default {
         error.value = 'Failed to load orders: ' + err.message
       } finally {
         loading.value = false
+      }
+    }
+
+    const loadRestockingOrders = async () => {
+      try {
+        restockingOrders.value = await api.getRestockingOrders()
+      } catch (err) {
+        // Non-fatal: restocking section simply stays hidden on failure
+        console.error('Failed to load restocking orders:', err)
       }
     }
 
@@ -153,13 +192,17 @@ export default {
       })
     }
 
-    onMounted(loadOrders)
+    onMounted(() => {
+      loadOrders()
+      loadRestockingOrders()
+    })
 
     return {
       t,
       loading,
       error,
       orders,
+      restockingOrders,
       getOrdersByStatus,
       getOrderStatusClass,
       formatDate,
@@ -172,6 +215,32 @@ export default {
 </script>
 
 <style scoped>
+/* Restocking orders section */
+.restocking-section {
+  margin-bottom: 1.5rem;
+}
+
+.restocking-table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.rcol-order-number {
+  width: 140px;
+}
+
+.rcol-items {
+  width: 120px;
+}
+
+.rcol-date {
+  width: 150px;
+}
+
+.rcol-value {
+  width: 130px;
+}
+
 /* Fixed table layout to prevent column shifting */
 .orders-table {
   table-layout: fixed;

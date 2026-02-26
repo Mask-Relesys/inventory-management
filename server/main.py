@@ -80,6 +80,7 @@ class Order(BaseModel):
     actual_delivery: Optional[str] = None
     warehouse: Optional[str] = None
     category: Optional[str] = None
+    is_restocking_order: Optional[bool] = False
 
 class DemandForecast(BaseModel):
     id: str
@@ -89,6 +90,7 @@ class DemandForecast(BaseModel):
     forecasted_demand: int
     trend: str
     period: str
+    unit_cost: float
 
 class BacklogItem(BaseModel):
     id: str
@@ -303,6 +305,51 @@ def get_monthly_trends():
     result = list(months.values())
     result.sort(key=lambda x: x['month'])
     return result
+
+class RestockingOrderRequest(BaseModel):
+    items: List[dict]  # [{sku, name, quantity, unit_price}]
+
+# Counter for restocking order numbers (in-memory, resets on restart)
+_restocking_order_counter = [0]
+
+@app.post("/api/restocking-orders", response_model=Order)
+def create_restocking_order(request: RestockingOrderRequest):
+    """Create a new restocking order from selected forecast items"""
+    from datetime import datetime, timedelta
+
+    _restocking_order_counter[0] += 1
+    year = datetime.now().year
+    order_num = f"RST-{year}-{_restocking_order_counter[0]:04d}"
+
+    now = datetime.now()
+    order_date = now.strftime("%Y-%m-%d")
+    expected_delivery = (now + timedelta(days=14)).strftime("%Y-%m-%d")
+
+    total_value = sum(
+        item.get("quantity", 0) * item.get("unit_price", 0)
+        for item in request.items
+    )
+
+    new_order = {
+        "id": f"rst-{_restocking_order_counter[0]}",
+        "order_number": order_num,
+        "customer": "Internal Restocking",
+        "items": request.items,
+        "status": "Processing",
+        "order_date": order_date,
+        "expected_delivery": expected_delivery,
+        "total_value": round(total_value, 2),
+        "warehouse": "Internal",
+        "is_restocking_order": True
+    }
+
+    orders.append(new_order)
+    return new_order
+
+@app.get("/api/restocking-orders", response_model=List[Order])
+def get_restocking_orders():
+    """Get all restocking orders"""
+    return [order for order in orders if order.get("is_restocking_order") is True]
 
 if __name__ == "__main__":
     import uvicorn
